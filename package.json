@@ -1,0 +1,64 @@
+{
+  "name": "codex-focus-notifications",
+  "displayName": "Codex Focus Notifications",
+  "description": "Focus the matching Codex terminal from macOS notifications; silence and clear foreground sessions.",
+  "version": "0.3.0",
+  "publisher": "frequenk",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "ui"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./src/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codexFocus.showStatus",
+        "title": "Codex Notifications: Show Status"
+      }
+    ],
+    "configuration": {
+      "title": "Codex Focus Notifications",
+      "properties": {
+        "codexFocus.codexHome": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "Local Codex home. Empty uses CODEX_HOME or ~/.codex."
+        },
+        "codexFocus.codexPath": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "Codex executable. Empty uses the installer record, then PATH."
+        }
+      }
+    }
+  },
+  "author": "frequenk",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Frequenk/codex-focus-notifications.git"
+  },
+  "homepage": "https://github.com/Frequenk/codex-focus-notifications#readme",
+  "bugs": {
+    "url": "https://github.com/Frequenk/codex-focus-notifications/issues"
+  },
+  "icon": "assets/icon.png",
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "package": "node scripts/package.mjs",
+    "bundle": "python3 scripts/bundle.py"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "4.0.0"
+  }
+}

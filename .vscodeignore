@@ -1,0 +1,11 @@
+.github/**
+checks/**
+node_modules/**
+.venv/**
+dist/**
+package-lock.json
+scripts/**
+!scripts/notify.py
+.gitignore
+.vscodeignore
+AGENTS.md
