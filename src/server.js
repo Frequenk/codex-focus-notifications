@@ -85,7 +85,7 @@ async function targetIdentity(home, execution, threadId) {
     });
   }
   try {
-    await request('initialize', { clientInfo: { name: 'codex-focus-notifications', version: '0.2.0' },
+    await request('initialize', { clientInfo: { name: 'codex-focus-notifications', version: require('../package.json').version },
       capabilities: { experimentalApi: true } });
     socket.send(JSON.stringify({ jsonrpc: '2.0', method: 'initialized' }));
     const all = new Map(); let cursor;

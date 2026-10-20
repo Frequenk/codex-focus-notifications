@@ -1,21 +1,32 @@
-# 构建与发布
+# 自动发布
 
-## 首次准备
+## 日常使用
 
-将目录创建为自己的 Git 仓库并推送到 GitHub。默认文档链接指向 `Frequenk/codex-focus-notifications`；如果使用其他仓库，修改 package.json 的 repository、homepage、bugs 和安装文档链接。工作流使用 github.repository，不写死仓库令牌或仓库名称。
+**推送到 main，检查通过后自动发布。** 文档改动也会发布，无需手动调整版本、创建标签或点击 Release。
 
-GitHub Actions 默认读权限；仅 release job 请求 `contents: write`。无需配置个人令牌或 Marketplace 凭据，若组织策略禁止写 Release，需要仓库管理员放开对应权限。
+PR 只执行检查和构建，不发布。需要手动重试时，可在 Actions 的 Build and release 中选择 main 并运行工作流。
 
-## 日常发布
+## 自动处理的步骤
 
-1. 手动调整 package.json 的 SemVer 版本，运行 npm install --package-lock-only --ignore-scripts 同步锁文件，更新 CHANGELOG。
-2. 按[开发与构建指南](development.md)执行完整本地检查和打包流程，再按[验收指南](verification.md)验证桌面行为。
-3. 由维护者自行提交、推送代码，并创建和推送与包版本一致的 `vVERSION` 标签。
-4. Actions 校验、构建并发布 GitHub Release。包含连字符的预发布版本标记为 prerelease，agent 默认不安装它。
-5. 检查附件与 SHA256SUMS，通过 agent 指南在隔离环境安装一次。
+1. 读取 GitHub Releases 和标签，首次使用 package.json 的基础版本，之后按已有最高稳定版本递增补丁号，例如 `0.3.0 → 0.3.1 → 0.3.2`。
+2. 在 CI 工作目录中同步 package.json 与锁文件版本，执行检查，构建同版本 VSIX 和 agent 工具包。
+3. 检查通过后，为本次构建的确切提交自动创建版本标签与草稿 Release。
+4. 上传 VSIX、agent 安装工具包和 SHA256SUMS，全部成功后公开 Release，并设为最新版本。
 
-工作流不会自动修改版本、提交、推送或创建标签。已存在 Release 时拒绝覆盖，修复后使用新版本。GitHub 自动附带源码归档，项目额外发布 VSIX 和携带安装依赖的 agent 工具包。
+无需维护版本提交，仓库中的基础版本不会随每次发布回写；下载包内带有本次发布的实际版本。需要切换大版本或次版本时，可提高 package.json 及锁文件中的基础版本。
 
-## 本地与远程证据
+## 重试与并发
 
-本地打包成功只证明本机命令通过；仓库尚未推送时不能声称 Actions 已执行或 Release 已上线。无桌面 CI 使用隔离配置与模拟通知程序，不能替代真实 macOS 通知授权、持续样式和鼠标点击验收。
+发布流程串行运行，避免同时分配相同版本。连续推送时 GitHub 可能替换仍在等待的运行，以实际执行并检查通过的运行发布。
+
+同一提交已经成功发布时，重跑不会创建重复 Release。失败的构建不会发布；附件上传失败时保留草稿，不会作为最新稳定版供安装。重跑会分配新的未使用版本，失败草稿可按需删除。已有版本及附件不覆盖。
+
+版本查询发生网络、权限或限流错误时停止，不把错误当作“还没有发布过”。
+
+## 仓库配置
+
+默认仓库为 `Frequenk/codex-focus-notifications`。工作流使用当前 github.repository，无需硬编码仓库名或个人令牌；Fork 后应同步 package.json 与文档中的项目链接。
+
+仅发布任务请求 `contents: write`，其他任务保持只读。如果组织策略限制创建 Release 或标签，需要管理员允许对应操作。无需 Marketplace 凭据，本项目仅发布到 GitHub Releases。
+
+工作流不会在本机自动提交或推送代码，也不会修改当前安装。从源码检查、构建及桌面验收见[开发指南](development.md)与[验收指南](verification.md)。实际远程发布需在该工作流推送到 main 后验证。

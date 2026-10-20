@@ -60,7 +60,7 @@ with tempfile.TemporaryDirectory(prefix='codex-install-smoke-') as temporary:
         assert m.install(args, env)['apply'] is False
         assert before == {p.name: p.read_bytes() for p in home.iterdir()}, '预览修改了配置'
         args.apply = True; m.install(args, env)
-        assert installed == {m.ID: '0.3.0'}
+        assert installed == {m.ID: m.VERSION}
         doc = m.toml_module().parse((home / 'config.toml').read_text())
         assert doc['model'] == 'fixture-model' and '# 保留用户注释' in (home / 'config.toml').read_text()
         assert list(doc['tui']['keymap']['global']['open_agents']) == ['f10', 'f12']

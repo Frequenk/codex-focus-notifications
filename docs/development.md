@@ -41,4 +41,4 @@ npm run package
 
 CI 执行相同的源码检查、隔离流程验收与构建。真实 macOS 通知、系统权限和鼠标点击需按[验收指南](verification.md)检查，隔离检查不能替代桌面验证。
 
-GitHub Actions 在版本标签推送后发布 GitHub Release。版本规则、权限与维护步骤见[发布指南](releasing.md)。贡献约定见 [CONTRIBUTING.md](../CONTRIBUTING.md)。
+推送 main 后，GitHub Actions 自动递增补丁版本并发布 GitHub Release；PR 只检查和构建。自动版本仅写入 CI 工作目录，不产生版本提交。版本规则、权限与维护步骤见[发布指南](releasing.md)。贡献约定见 [CONTRIBUTING.md](../CONTRIBUTING.md)。
