@@ -1,6 +1,6 @@
 # 贡献指南
 
-先阅读 README、docs/architecture.md 和 docs/verification.md。使用 Node ≥22、Python ≥3.9，按 README 安装锁定依赖并构建。
+先阅读 [README](README.md)、[工作原理](docs/architecture.md)和[验收指南](docs/verification.md)。使用 Node ≥22、Python ≥3.9，按[开发与构建指南](docs/development.md)安装锁定依赖并构建。
 
 保持原版 Codex CLI，不引入自定义 CLI 构建或额外常驻服务。新增兼容版本需要隔离桌面证据；不移除点击核对和停止条件。注释使用中文，用户资料保持中英文核心说明一致。
 
