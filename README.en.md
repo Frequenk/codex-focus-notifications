@@ -11,7 +11,7 @@ Get notified when work finishes or Codex needs an answer. Return to a session to
 | Situation | Behavior |
 | --- | --- |
 | A background task finishes | Shows the project, session name, duration and completion time |
-| Codex needs an answer | Shows the number of questions, such as `1 question` |
+| Codex needs an answer | Shows the number of questions and time, such as `1 question • 16:38:09` |
 | You are viewing a session | Suppresses new notifications for that session |
 | You return to a session | Clears its existing notifications, leaving other sessions alone |
 | You click a notification | Focuses the original VS Code window and terminal; switches to the target session when supported |
@@ -21,10 +21,21 @@ Example completion notification:
 
 ```text
 my-project · Improve login flow
-Worked for 42s • 16:38
+Worked for 42s • 16:38:09
 ```
 
-Notifications are silent by default and managed separately for each session. Duration comes from the matching turn record; when unavailable, the message reads `Finished • HH:mm`.
+Completion and question notifications use “project · session name” as the title. Missing parts are omitted; when neither is available, the title is `Codex`. All notification messages end with local time in 24-hour `HH:mm:ss` format.
+
+| Situation | Example message | Where it appears |
+| --- | --- | --- |
+| Task finishes with duration available | `Worked for 42s • 16:38:09` | macOS system notification |
+| Task finishes without duration | `Finished • 16:38:09` | macOS system notification |
+| Answer needed with question count available | `1 question • 16:38:09` / `3 questions • 16:38:09` | macOS system notification |
+| Answer needed without a question count | `Input required • 16:38:09` | macOS system notification |
+| Original terminal unavailable after clicking | `Original terminal is unavailable • 16:38:09` (title: `Codex`) | macOS system notification |
+| Automatic session switching does not complete | `已定位原终端，但未能自动切回目标会话。已停止按键操作，请手动选择该会话。 • 16:38:09` | VS Code message (currently in Chinese) |
+
+Notifications are silent by default and managed separately for each session. Durations may also read `2m 5s` or `1h 2m 5s`. The time is the recorded turn completion time when available; otherwise, it is the time the notification is generated.
 
 ## Components and installation changes
 

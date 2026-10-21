@@ -38,5 +38,25 @@ const pause = () => new Promise(r => setTimeout(r, 20));
   assert.deepEqual(deleted(), ids.map(id => 'codex-' + id), '历史会话未清理或重复删除');
   a.closeTerminal({}); a.dispose(); b.dispose();
   assert.deepEqual(deleted(), ids.map(id => 'codex-' + id), '扩展停用被当作退出');
-  console.log('PASS: terminal/TUI exit, history, duplicate events, cross-window protection, reload does not clear');
+
+  // 走真实点击失败流程，外部窗口操作和提示由本机替身接收。
+  const messages = [];
+  const vscode = { window: { state: { focused: true }, showInformationMessage: message => messages.push(message) },
+    commands: { executeCommand: async () => {} } };
+  const target = { show() { vscode.window.activeTerminal = target; } };
+  const c = new ClickBridge({ windowId: window1, vscode, changed: () => {}, log: () => {},
+    resolve: async prefix => ids.find(id => id.startsWith(prefix)) });
+  c.reset(path.join(root, 'click-flow'));
+  c.title(target, ids[0]); await pause(); c.title(target, ids[1]); await pause();
+  const record = c.records.get(target);
+  const NativeDate = Date;
+  try {
+    global.Date = class extends NativeDate {
+      constructor(...args) { super(...(args.length ? args : [2024, 0, 2, 3, 4, 5])); }
+    };
+    await c.open({ terminal_id: record.id, thread_id: ids[0], request_id: window1 });
+  } finally { global.Date = NativeDate; c.dispose(); }
+  assert.equal(c.lastResult.reason, 'restart_tui_required');
+  assert.deepEqual(messages, ['已定位原终端，但未能自动切回目标会话。已停止按键操作，请手动选择该会话。 • 03:04:05']);
+  console.log('PASS: terminal/TUI exit, history, duplicate events, cross-window protection, reload does not clear, click message timestamp');
 })().catch(e => { console.error(e); process.exitCode = 1; }).finally(() => fs.rmSync(root, { recursive: true, force: true }));

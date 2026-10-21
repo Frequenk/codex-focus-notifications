@@ -20,6 +20,7 @@ python3 -m venv .venv
 npm run check
 .venv/bin/python checks/install-smoke.py
 node checks/exit-smoke.cjs
+.venv/bin/python checks/completion-smoke.py
 npm run package
 .venv/bin/python scripts/bundle.py
 .venv/bin/python checks/package-smoke.py

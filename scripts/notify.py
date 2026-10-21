@@ -134,12 +134,14 @@ def write_private_json(path, value):
             pass
 
 
-def click_routes(thread_id):
+def click_routes(thread_id, errors=None):
     now = time.time() * 1000
     routes = []
     for path in (codex_home() / "vscode-click/windows").glob("*.json"):
         value = read_private_json(path)
         if not value:
+            if errors is not None:
+                errors.append("terminal_state_unreadable")
             continue
         try:
             if (value.get("version") != 1 or value.get("window_id") != path.stem
@@ -164,7 +166,11 @@ def click_routes(thread_id):
                                "thread_id": thread_id,
                                "showing": terminal.get("current_thread_id") == thread_id,
                                "seen_at_ms": terminal.get("seen_at_ms", 0)})
-        except (OSError, KeyError, TypeError, ValueError):
+        except OSError:
+            continue
+        except (KeyError, TypeError, ValueError):
+            if errors is not None:
+                errors.append("terminal_state_invalid")
             continue
     return sorted(routes, key=lambda item: (item["showing"], item["seen_at_ms"]), reverse=True)
 
@@ -217,7 +223,7 @@ def open_notification(token):
             write_clear_log({"hook_event_name": "NotificationClick", "source": "vscode",
                              "session_id": ticket["thread_id"]}, "target_unavailable")
             run_command(["/usr/bin/open", "-b", "com.microsoft.VSCode"], timeout=2)
-            run_command([NOTIFIER, "-title", "Codex", "-message", "Original terminal is unavailable",
+            run_command([NOTIFIER, "-title", "Codex", "-message", notification_message("Original terminal is unavailable"),
                          "-activate", "com.microsoft.VSCode"], timeout=2)
             return
         request = dict(route, version=1, request_id=token, created_at_ms=time.time() * 1000)
@@ -258,9 +264,14 @@ def lookup_thread_name(thread_id):
     return name
 
 
-def send_notification(cwd, thread_id, status):
+def notification_message(status, timestamp=None):
+    clock = (timestamp if timestamp is not None else datetime.now()).strftime("%H:%M:%S")
+    return status + " • " + clock
+
+
+def send_notification(cwd, thread_id, status, timestamp=None):
     if clear_foreground_notification(thread_id, result="notification_suppressed"):
-        return
+        return {"result": "notification_suppressed"}
     title_parts = []
     if isinstance(cwd, str) and cwd:
         project = Path(cwd).name
@@ -271,14 +282,17 @@ def send_notification(cwd, thread_id, status):
         title_parts.append(thread_name)
     if not title_parts:
         title_parts.append("Codex")
-    message = status
+    message = notification_message(status, timestamp)
     command = [NOTIFIER, "-title", " · ".join(title_parts),
                "-message", message]
     if isinstance(thread_id, str) and thread_id:
         command += ["-group", "codex-" + thread_id]
     command += notification_click_action(thread_id)
-    run_command(command)
-    clear_foreground_notification(thread_id, result="cleared_after_send")
+    error = run_command(command)
+    cleared = clear_foreground_notification(thread_id, result="cleared_after_send")
+    if error:
+        return {"result": "send_failed", "error": error}
+    return {"result": "cleared_after_send" if cleared else "notification_sent"}
 
 
 def handle_input_hook():
@@ -302,7 +316,6 @@ def handle_input_hook():
 
 def write_clear_log(event, result, error=None):
     record = {
-        "timestamp": datetime.now().astimezone().isoformat(timespec="milliseconds"),
         "hook": event.get("hook_event_name"),
         "source": event.get("source") if isinstance(event.get("source"), str) else None,
         "session_id": event.get("session_id") if isinstance(event.get("session_id"), str) else None,
@@ -310,6 +323,11 @@ def write_clear_log(event, result, error=None):
     }
     if error:
         record["error"] = error
+    write_notification_log(record)
+
+
+def write_notification_log(record):
+    record = dict(record, timestamp=datetime.now().astimezone().isoformat(timespec="milliseconds"))
     home = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
     try:
         directory = home / "log"
@@ -344,17 +362,17 @@ def handle_closed_terminal():
                         "remove_failed" if error else "remove_succeeded", error)
 
 
-def completion_status(event):
-    fallback = "Finished • " + datetime.now().strftime("%H:%M")
+def completion_identity(event):
+    """身份只查询一次；查询故障不能当作会话不存在。"""
+    identity = {"sources": [], "errors": [], "rollout": None, "database_checked": False}
     thread_id = event.get("thread-id")
-    turn_id = event.get("turn-id")
-    if not isinstance(thread_id, str) or not isinstance(turn_id, str):
-        return fallback
-    home = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
+    if not isinstance(thread_id, str) or not THREAD_ID.fullmatch(thread_id):
+        identity["errors"].append("missing_identifiers")
+        return identity
+    home = codex_home()
     databases = sorted(home.glob("state_*.sqlite"),
                        key=lambda p: int(p.stem.split("_")[-1])
                        if p.stem.split("_")[-1].isdigit() else -1, reverse=True)
-    rollout = None
     for database in databases:
         try:
             connection = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=0.2)
@@ -363,14 +381,58 @@ def completion_status(event):
                                          (thread_id,)).fetchone()
             finally:
                 connection.close()
-            if row and isinstance(row[0], str):
-                rollout = Path(row[0])
+            identity["database_checked"] = True
+            if row:
+                identity["sources"].append("database")
+                if isinstance(row[0], str) and row[0]:
+                    identity["rollout"] = Path(row[0])
                 break
-        except (sqlite3.Error, OSError, ValueError):
-            continue
+        except (sqlite3.Error, OSError, ValueError) as error:
+            identity["errors"].append("database_" + type(error).__name__)
+    if not identity["sources"]:
+        try:
+            with (home / "session_index.jsonl").open(encoding="utf-8") as index:
+                for line in index:
+                    try:
+                        record = json.loads(line)
+                    except ValueError:
+                        identity["errors"].append("index_invalid")
+                        continue
+                    if not isinstance(record, dict) or not isinstance(record.get("id"), str):
+                        identity["errors"].append("index_invalid")
+                        continue
+                    if record["id"] == thread_id:
+                        identity["sources"].append("index")
+                        break
+        except FileNotFoundError:
+            pass
+        except (OSError, UnicodeError) as error:
+            identity["errors"].append("index_" + type(error).__name__)
+    if not identity["sources"]:
+        try:
+            if click_routes(thread_id, identity["errors"]):
+                identity["sources"].append("terminal")
+        except OSError as error:
+            identity["errors"].append("terminal_" + type(error).__name__)
+    return identity
+
+
+def completion_status(event, identity=None, diagnostics=None):
+    fallback = ("Finished", None)
+    diagnostics = diagnostics if diagnostics is not None else {}
+    diagnostics.update(timing_reason="missing_identifiers", timing_attempts=0)
+    turn_id = event.get("turn-id")
+    if (not isinstance(event.get("thread-id"), str)
+            or not THREAD_ID.fullmatch(event["thread-id"])
+            or not isinstance(turn_id, str) or not turn_id):
+        return fallback
+    identity = identity if identity is not None else completion_identity(event)
+    rollout = identity["rollout"]
     if rollout is None:
+        diagnostics["timing_reason"] = "lookup_failed" if identity["errors"] or not identity["database_checked"] else "rollout_unavailable"
         return fallback
     for attempt in range(6):
+        diagnostics.update(timing_reason="turn_not_found", timing_attempts=attempt + 1)
         try:
             with rollout.open("rb") as transcript:
                 transcript.seek(0, 2)
@@ -392,6 +454,7 @@ def completion_status(event):
                     continue
                 duration = payload.get("duration_ms")
                 completed = payload.get("completed_at")
+                diagnostics["timing_reason"] = "invalid_timing"
                 if (isinstance(duration, bool) or not isinstance(duration, (int, float))
                         or duration < 0 or isinstance(completed, bool)
                         or not isinstance(completed, (int, float))):
@@ -405,13 +468,35 @@ def completion_status(event):
                 if hours or minutes:
                     parts.append(str(minutes) + "m")
                 parts.append(str(seconds) + "s")
-                clock = datetime.fromtimestamp(completed).strftime("%H:%M")
-                return "Worked for " + " ".join(parts) + " • " + clock
-        except (OSError, ValueError, OverflowError):
+                timestamp = datetime.fromtimestamp(completed)
+                diagnostics["timing_reason"] = "timing_found"
+                return "Worked for " + " ".join(parts), timestamp
+        except OSError:
+            diagnostics["timing_reason"] = "rollout_unreadable"
+            return fallback
+        except (ValueError, OverflowError):
+            diagnostics["timing_reason"] = "invalid_timing"
             return fallback
         if attempt < 5:
             time.sleep(0.1)
     return fallback
+
+
+def handle_completion(event):
+    identity = completion_identity(event)
+    record = {"hook": "agent-turn-complete", "source": "notify",
+              "session_id": event.get("thread-id") if isinstance(event.get("thread-id"), str) else None,
+              "turn_id": event.get("turn-id") if isinstance(event.get("turn-id"), str) else None,
+              "identity_sources": identity["sources"], "identity_errors": identity["errors"],
+              "timing_attempts": 0}
+    if (not identity["sources"] and identity["database_checked"] and not identity["errors"]
+            and isinstance(event.get("turn-id"), str) and event["turn-id"]):
+        record.update(result="notification_skipped", reason="unrecognized_session")
+    else:
+        status, timestamp = completion_status(event, identity, record)
+        record["status_kind"] = "worked" if record["timing_reason"] == "timing_found" else "finished"
+        record.update(send_notification(event.get("cwd"), event.get("thread-id"), status, timestamp))
+    write_notification_log(record)
 
 
 def main():
@@ -446,7 +531,7 @@ def main():
         return
     if not isinstance(event, dict) or event.get("type") != "agent-turn-complete":
         return
-    send_notification(event.get("cwd"), event.get("thread-id"), completion_status(event))
+    handle_completion(event)
 
 
 if __name__ == "__main__":

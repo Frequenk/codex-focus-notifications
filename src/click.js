@@ -195,8 +195,10 @@ class ClickBridge {
     } catch (error) {
       this.hold = { terminal: record.terminal, record, prefix: record.prefix };
       this.result(request, 'failed', error.message || error.name);
+      const now = new Date();
+      const clock = [now.getHours(), now.getMinutes(), now.getSeconds()].map(value => String(value).padStart(2, '0')).join(':');
       void this.options.vscode.window.showInformationMessage(
-        '已定位原终端，但未能自动切回目标会话。已停止按键操作，请手动选择该会话。');
+        '已定位原终端，但未能自动切回目标会话。已停止按键操作，请手动选择该会话。 • ' + clock);
     } finally {
       this.screen = null; this.captureTerminal = null; this.busy = false;
       this.stage = 'idle'; this.options.changed();

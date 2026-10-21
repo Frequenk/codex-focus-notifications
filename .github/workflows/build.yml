@@ -41,6 +41,8 @@ jobs:
         run: .venv/bin/python checks/install-smoke.py
       - name: Check terminal exit lifecycle
         run: node checks/exit-smoke.cjs
+      - name: Check completion notifications
+        run: .venv/bin/python checks/completion-smoke.py
       - run: npm run package
       - run: .venv/bin/python scripts/bundle.py
       - name: Inspect release payload
